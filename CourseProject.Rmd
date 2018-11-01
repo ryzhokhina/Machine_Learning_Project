@@ -122,8 +122,12 @@ confusionMatrix(predict1, test_data$classe)
 
 ```{r}
 set.seed(1234)
+fit_control = fitControl <- trainControl(## 5-fold CV
+                           method = "repeatedcv",
+                           number = 5,
+                           repeats = 1)
 
-model2 = randomForest(classe~., data = train_data_pc)
+model2 = randomForest(classe~., data = train_data_pc,trControl = fit_control )
 predict2 = predict(model2, test_data_pc, type = "response")
 
 confusionMatrix(predict2, test_data$classe)
