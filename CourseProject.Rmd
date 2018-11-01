@@ -1,0 +1,165 @@
+---
+title: "Coursera Machine Learning Project"
+author: "Anna Ryzhokhina"
+date: "November 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction to the project
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+The training data for this project are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har]. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## What you should submit
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+# Analysis
+
+## Summary of approach
+1. Load the data set and briefly learn the characteristics of the data
+2. Clean the data by 1) excluding variables which apparently cannot be explanatory variables, and 2) reducing variables with little information.
+3. Split Data : 60% of the original data is used for model building (training data) while the rest of 40% of the data is used for testing (testing data)
+4. Apply PCA to reduce the number of variables
+5. Apply "Decisions Tree", "Random Forest" and Bootsting methods to build a model
+6. Apply the best model on the test data
+
+### Load data
+
+```{r}
+train_file <- "pml-training.csv"
+test_file <- "pml-testing.csv"
+
+training <- read.csv(train_file, na.strings=c("NA","#DIV/0!",""), dec = ".", header = TRUE)
+predict_data <- read.csv(test_file, na.strings=c("NA","#DIV/0!",""), dec = ".", header = TRUE)
+
+```
+
+Check and install required packages:
+
+```{r,  results = "hide", message=FALSE, warning=FALSE}
+if("caret" %in% installed.packages() == FALSE)
+  install.packages("caret")
+if("rattle" %in% installed.packages() == FALSE)
+  install.packages("rattle")
+
+library(caret)
+library(rattle)
+library(randomForest)
+
+```
+
+### Clean data
+
+
+##### Remove the zero, empty and irrelevant variance predictors :
+
+```{r}
+## irrelevant predictors
+irrelevant_columns<- c("X", "user_name", "cvtd_timestamp", "amplitude_yaw_forearm", "raw_timestamp_part_1", "raw_timestamp_part_2", "new_window", "num_window")
+
+## zero predictors
+zero_columns <-nearZeroVar(training, names = TRUE) 
+
+## empty_predictors
+notEmptyValues = sapply(training, function (x) {sum(!is.na (x) & x != "")} )
+n= nrow(training)
+empty_columns = names ( notEmptyValues[notEmptyValues < 0.6*n])
+
+## remove colums :
+training<-training[ , !names(training) %in% c(zero_columns, empty_columns,irrelevant_columns ) ] 
+## remove colums from testing data:
+predict_data<-predict_data[ , !names(predict_data) %in% c(zero_columns, empty_columns,irrelevant_columns ) ] 
+
+dim(training)
+dim(predict_data)
+```
+
+
+### Split data:
+
+```{r}
+train_index = createDataPartition(training$classe, p= 0.6, list= FALSE)
+train_data = training[train_index,]
+test_data =training[-train_index,]
+
+```
+
+### Apply PCA to reduce the number of variables
+```{r}
+set.seed(1234)
+
+preProc <- preProcess(train_data,method="pca",thresh = 0.8) 
+
+train_data_pc = predict(preProc,train_data)
+test_data_pc = predict(preProc,test_data)
+
+dim(train_data_pc)
+```
+
+### Prediction with Decision Trees:
+
+```{r}
+set.seed(123)
+model1 = train(classe~., method = "rpart", data =  train_data_pc)
+predict1 = predict(model1, test_data_pc, type = "raw")
+confusionMatrix(predict1, test_data$classe)
+
+```
+
+
+###Prediction with Random Forest:
+
+```{r}
+set.seed(1234)
+
+model2 = randomForest(classe~., data = train_data_pc)
+predict2 = predict(model2, test_data_pc, type = "response")
+
+confusionMatrix(predict2, test_data$classe)
+
+```
+
+
+### Prediction with Generalized Boosted Regression:
+
+```{r}
+
+set.seed(12345)
+fit_control = fitControl <- trainControl(## 5-fold CV
+                           method = "repeatedcv",
+                           number = 5,
+                           repeats = 1)
+model3 = train(classe~., data = train_data_pc, 
+                 method = "gbm", 
+                 trControl = fit_control,
+                 verbose = FALSE)
+predict3 = predict(model3, test_data_pc, type = "raw")
+confusionMatrix(predict3, test_data$classe)
+
+```
+
+### Conclusion:
+
+The Random Forest algorithm performed better than Decision Trees and Bootsting. Accuracy for the Random Forest model was 0.9509  ( 95% CI : (0.9459, 0.9556)). The Random Forests model is choosen. The expected out-of-sample error is estimated at 5%.
+
+Apply the model to test data:
+
+```{r}
+
+
+predict4 = predict(model2, predict(preProc,predict_data), type = "response")
+
+predict4
+
+```
